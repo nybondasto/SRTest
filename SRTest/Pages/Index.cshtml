@@ -1,0 +1,167 @@
+﻿@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Home page";
+}
+
+<div class="text-center" style="width: 100%">
+    <h3>Testi-chat</h3>
+    <table>
+        <tr>
+            <td style="width: 80px; text-align: left;" valign="top">Ryhmä:</td>
+            <td align="left">
+                <select id="huoneet" class="cmbHuoneet">
+                    <option value="">-- Valitse ryhmä --</option>
+                    <option value="ryhma_1">Ryhmä 1</option>
+                    <option value="ryhma_2">Ryhmä 2</option>
+                    <option value="ryhma_3">Ryhmä 3</option>
+                </select>
+                <div id="lkm" style="display: inline-table"></div>
+            </td>
+        </tr>
+        <tr>
+            <td style="width: 80px; text-align: left;" valign="top">Nimi:</td>
+            <td align="left"><input id="username" type="text"  class="cmbHuoneet"/></td>
+        </tr>
+        <tr>
+            <td></td>
+            <td align="left">
+                <input id="joingroup" type="button" value="Liity ryhmään" data-mode="join" class="cmbHuoneet"/>
+            </td>
+        </tr>
+    </table>
+    
+    <hr />
+    
+    <div id="messages" style="text-align: left;"></div>
+    <hr />
+    <div style="text-align: left;">
+        <table>
+            <tr>
+                <td style="width: 80px; text-align: left;" valign="top">Viesti:</td>
+                <td align="left"><input id="message" type="text" class="viesti" /><input id="sendmessage" name="sendmessage" type="button" value="Lähetä" style="width: 100px;" />
+                                                                                  <input id="sendgroup" name="sendgroup" type="button" value="Lähetä ryhmälle" style="width: 170px;" /></td>
+            </tr>
+        </table>
+    </div>
+</div>
+<script src="~/lib/signalr.min.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+
+
+    $(document).ready(function () {
+        initialize();
+
+        // Create a function that the hub can call to broadcast messages.
+        hubConnection.on('broadcastMessage', messageCallback);
+        hubConnection.on('echo', messageCallback);
+        //hubConnection.on('sendgroup', messageCallback);
+    });
+
+    var hubConnection;
+    var messageInput = $("#message")[0];
+    var username = $("#username")[0];
+
+    var initialize = function () {
+
+        hubConnection = new signalR.HubConnectionBuilder()
+            .withUrl("/etreathub")
+            .configureLogging(signalR.LogLevel.Information)
+            .build();
+        hubConnection.start().catch(err => console.error(err.toString()));
+    }
+
+    document.getElementById('sendmessage').addEventListener('click', function (event) {
+        // Call the broadcastMessage method on the hub.
+        if (messageInput.value) {
+
+            hubConnection.send('broadcastMessage', username.value, messageInput.value);
+            messageInput.value = "";
+            messageInput.focus();
+            event.preventDefault();
+        }
+    });
+
+    function createMessageEntry(name, msg) {
+        var tyyli = "user";
+        if (name == "_SYSTEM_")
+            tyyli = "system";
+
+        var node = document.createElement("DIV");   
+        var textnode = document.createTextNode(name + " wrote: " + msg);
+        node.appendChild(textnode);
+        node.className = tyyli;
+        return node;
+    }
+
+    function updateGroupCount(msg) {
+        $("#lkm").html(msg);
+    }
+
+
+    var messageCallback = function (name, message) {
+
+        if (name != "_GROUPCOUNT_") {
+            if (!message) return;
+            // Html encode display name and message.
+            var encodedName = name;
+            var encodedMsg = message.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            var messageEntry = createMessageEntry(encodedName, encodedMsg);
+
+            var messageBox = document.getElementById('messages');
+            messageBox.appendChild(messageEntry);
+            messageBox.scrollTop = messageBox.scrollHeight;
+        }
+        else {
+            updateGroupCount(message);
+        }
+    };
+    
+    // Group join/leave operations
+    document.getElementById('joingroup').addEventListener('click', function (event) {
+
+        var ryhma = $("#huoneet").val();
+        var mode = $("#joingroup").data("mode");
+        
+
+        if ($('username').is(':disabled') == false)
+            $(username).attr('disabled', 'disabled');
+
+        if ($('huoneet').is(':disabled') == false)
+            $("#huoneet").attr('disabled', 'disabled');
+
+        if (mode == "join") {
+            if (ryhma) {
+                hubConnection.send('joingroup', username.value, ryhma);
+                $("#joingroup").data("mode", "leave");
+                $("#joingroup").val("Poistu ryhmästä");
+            }
+        }
+        else {
+            hubConnection.send('leavegroup', username.value, ryhma);
+            $("#joingroup").data("mode", "join");
+            $("#joingroup").val("Liity ryhmään");
+            $("#huoneet").removeAttr('disabled');
+            $("#lkm").html("");
+        }
+        
+        event.preventDefault();
+    });
+
+
+    // Send to Group/Groups
+    document.getElementById('sendgroup').addEventListener('click', function (event) {
+
+        var ryhma = $("#huoneet").val();
+
+        if (ryhma && messageInput.value) {
+            hubConnection.send('sendgroup', username.value, ryhma, messageInput.value);
+        }
+        messageInput.value = '';
+        messageInput.focus();
+        event.preventDefault();
+    });
+    
+
+</script>
